@@ -230,7 +230,7 @@ class TextSplitter(BaseDocumentTransformer, ABC):
 
 
 class CharacterTextSplitter(TextSplitter):
-    """Splitting text that looks at characters."""
+    """Splitting text by a specify character."""
 
     def __init__(self, separator: str = "\n\n", **kwargs: Any) -> None:
         """Create a new TextSplitter."""
@@ -413,8 +413,11 @@ class Tokenizer:
     encode: Callable[[str], list[int]]
 
 
-def split_text_on_tokens(*, text: str, tokenizer: Tokenizer) -> list[str]:
-    """Split incoming text and return chunks using tokenizer."""
+def split_text_on_length(*, text: str, tokenizer: Tokenizer) -> list[str]:
+    """
+    Split incoming text and return chunks using tokenizer.
+    just use chunk_size and overlap, No use seperator.
+    """
     splits: list[str] = []
     input_ids = tokenizer.encode(text)
     start_idx = 0
@@ -473,15 +476,10 @@ class TokenTextSplitter(TextSplitter):
             encode=_encode,
         )
 
-        return split_text_on_tokens(text=text, tokenizer=tokenizer)
-
+        return split_text_on_length(text=text, tokenizer=tokenizer)
 
 class RecursiveCharacterTextSplitter(TextSplitter):
-    """Splitting text by recursively look at characters.
-
-    Recursively tries to split by different characters to find one
-    that works.
-    """
+    """Splitting text by recursively look at a group separators."""
 
     def __init__(
             self,
@@ -491,13 +489,29 @@ class RecursiveCharacterTextSplitter(TextSplitter):
     ) -> None:
         """Create a new TextSplitter."""
         super().__init__(keep_separator=keep_separator, **kwargs)
-        self._separators = separators or ["\n\n", "\n", " ", ""]
+        self._separators = separators
+        self._regex_list = self._get_regex_list()
+        
+    def _get_regex_list(self, separators):
+        default_regex_list = [
+            [re.compile(), self._chunk_size],
+            [re.compile(), self._chunk_size], 
+            [re.compile(), self._chunk_size],
+            [re.compile(), self._chunk_size], 
+            [re.compile(), self._chunk_size],
+            [re.compile(), self._chunk_size], 
+        ]
+        
+        custom_regex_list = re.compile(separators) if self._separators else []
+        regex_list = custom_regex_list + default_regex_list
+        
+        return regex_list
 
-    def _split_text(self, text: str, separators: list[str]) -> list[str]:
+    def _split_text(self, text: str, regex_list: list[str]) -> list[str]:
         """Split incoming text and return chunks."""
         final_chunks = []
         # Get appropriate separator to use
-        separator = separators[-1]
+        separator = regex_list[-1]
         new_separators = []
         for i, _s in enumerate(separators):
             if _s == "":
@@ -531,4 +545,4 @@ class RecursiveCharacterTextSplitter(TextSplitter):
         return final_chunks
 
     def split_text(self, text: str) -> list[str]:
-        return self._split_text(text, self._separators)
+        return self._split_text(text, self._get_regex_list)
